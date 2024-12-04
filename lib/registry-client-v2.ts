@@ -21,7 +21,6 @@ import {
 	RegistryRepo,
 	RegistryClientOpts,
 	AuthInfo,
-	TagList,
 } from './types';
 import { DockerJsonClient, DockerResponse } from './docker-json-client';
 import { Parse_WWW_Authenticate } from './www-authenticate';
@@ -615,16 +614,23 @@ export class RegistryClientV2 {
 		return [200, 401].includes(res.status);
 	}
 
-	// TODO: pagination of some kind
-	async listTags(): Promise<TagList> {
+	async listTags(): Promise<string[]> {
 		await this.login();
-		const res = await this._api.request({
-			method: 'GET',
-			path: `/v2/${encodeURI(this.repo.remoteName)}/tags/list`,
-			headers: this._headers,
-			redirect: 'follow',
-		});
-		return await res.dockerJson();
+		let nextLink: string | undefined = `/v2/${encodeURI(this.repo.remoteName)}/tags/list`;
+		let tags: string[] = [];
+		while (nextLink){
+			const res: any = await this._api.request({
+				method: 'GET',
+				path: nextLink,
+				headers: this._headers,
+				redirect: 'follow',
+			});
+			if (res.headers['link']) {
+				nextLink = /<([^>]+)>/.exec(res.headers['link'])?.[1];
+			}
+			tags.concat((await res.dockerJson()).tags)
+		}
+		return tags;
 	}
 
 	/*
